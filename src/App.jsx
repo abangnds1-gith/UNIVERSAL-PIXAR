@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, X, Copy, Check, Loader2, Download, RefreshCw, AlertTriangle, Sparkles, ScanLine, FileWarning, UserCheck, Edit3, PlayCircle, Square, Wand2, Lock, Key, ArrowRight } from 'lucide-react';
+import { Upload, X, Copy, Check, Loader2, Download, RefreshCw, AlertTriangle, Sparkles, ScanLine, FileWarning, UserCheck, Edit3, PlayCircle, Square, Wand2, Lock, Key, ArrowRight, KeyRound, BookOpen } from 'lucide-react';
 
 export default function App() {
   // --- STATE UNTUK PAYWALL / GATEKEEPER --- //
@@ -8,6 +8,10 @@ export default function App() {
   const [passcode, setPasscode] = useState("");
   const [passcodeError, setPasscodeError] = useState("");
   const CORRECT_PASSCODE = "2905"; 
+
+  // --- STATE UNTUK API KEY PENGGUNA (BYOK) --- //
+  const [userApiKey, setUserApiKey] = useState(localStorage.getItem('geminiUserApiKey') || "");
+  const [isApiSetup, setIsApiSetup] = useState(!!localStorage.getItem('geminiUserApiKey'));
 
   // --- STATE UNTUK APLIKASI UTAMA --- //
   const [uploadedImages, setUploadedImages] = useState([]); 
@@ -172,7 +176,8 @@ export default function App() {
     const response = await fetch('/api/gemini', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, payload })
+      // UBAH DI SINI: Hantar userApiKey sekali ke backend
+      body: JSON.stringify({ action, payload, apiKey: userApiKey })
     });
     if (!response.ok) {
       const errData = await response.json().catch(() => ({}));
@@ -217,9 +222,10 @@ export default function App() {
         base64Data = result.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
       } else {
         const scene1Instruction = isScene1 ? "Tugasan: Jana imej 3D Pixar berkualiti tinggi. PENTING: JANGAN tunjukkan produk jenama sebenar. Jika ada produk dalam gambar ini, ia MESTILAH produk generik, tidak berjenama, atau produk pesaing yang nampak murah dan gagal. " : "";
+        
+        // PENTING: Untuk gemini-3.1-flash-image, struktur prompt berbeza sikit dari Imagen
         const payload = {
-          instances: { prompt: scene1Instruction + imagePrompt },
-          parameters: { sampleCount: 1 }
+          contents: [{ parts: [{ text: scene1Instruction + imagePrompt }] }]
         };
 
         // PANGGIL BACKEND
@@ -283,7 +289,10 @@ Babak 2 hingga 4: Mekanisme penyelesaian. Produk sebenar muncul di sini sebagai 
 Babak 5: Kejayaan. WAJIB UNTUK BABAK 5: Memaparkan Watak Manusia Pixar + Watak Produk Pixar + PRODUK REAL secara serentak.
 
 PENTING: JANGAN gunakan atau sebut sebarang harga, diskaun, atau promosi murahan. Elakkan overclaim untuk produk kesihatan.
-SYARAT WAJIB BAHASA: Dialog MESTI ditulis seperti format ini: 🗣️ Dialog: "Teks dialog di sini". Gunakan 100% Bahasa Melayu gaya sempoi.` },
+SYARAT WAJIB BAHASA & DURASI AUDIO (SANGAT PENTING): 
+Dialog MESTI ditulis seperti format ini: 🗣️ Dialog: "Teks dialog di sini". 
+Gunakan 100% Bahasa Melayu gaya sempoi.
+DURASI: Dialog bagi SETIAP babak MESTI cukup panjang untuk menampung durasi bacaan audio selama 8 hingga 10 saat. Oleh itu, WAJIB tulis dialog sekurang-kurangnya 20 hingga 35 patah perkataan untuk setiap babak. Jangan buat dialog pendek!` },
             ...imageParts
           ]
         }],
@@ -376,7 +385,7 @@ SYARAT WAJIB BAHASA: Dialog MESTI ditulis seperti format ini: 🗣️ Dialog: "T
       Tugasan: Jana semula "combinedVideoPrompt" untuk babak ini. 
       ${extraRule}
       PENTING: Pastikan deskripsi visual pergerakan watak manusia menepati Profil Watak Manusia TERKINI. JANGAN masukkan elemen harga/diskaun.
-      SYARAT WAJIB BAHASA: Dialog MESTI 100% dalam Bahasa Melayu gaya sempoi, menggunakan format 🗣️ Dialog: "teks disini".
+      SYARAT WAJIB BAHASA & DURASI: Dialog MESTI 100% dalam Bahasa Melayu gaya sempoi, menggunakan format 🗣️ Dialog: "teks disini". Dialog WAJIB panjang (sekurang-kurangnya 20 hingga 35 patah perkataan) supaya cukup untuk durasi audio 8 saat. JANGAN BUAT DIALOG PENDEK.
     `;
 
     try {
@@ -426,7 +435,7 @@ SYARAT WAJIB BAHASA: Dialog MESTI ditulis seperti format ini: 🗣️ Dialog: "T
       Babak 1: Kekalkan elemen watak produk generik/pesaing yang gagal. Dilarang guna produk sebenar.
       Babak 2-4: Kekalkan elemen gaya visual -> "${visualRule}".
       Babak 5: Kekalkan elemen Produk Real + Watak Manusia + Watak Produk Pixar.
-      PENTING: Dilarang memasukkan harga atau diskaun. MESTI format dialog: 🗣️ Dialog: "teks disini".
+      PENTING: Dilarang memasukkan harga atau diskaun. MESTI format dialog: 🗣️ Dialog: "teks disini". Pastikan panjang dialog sekurang-kurangnya 20-35 patah perkataan (durasi 8 saat).
     `;
 
     try {
@@ -553,7 +562,67 @@ SYARAT WAJIB BAHASA: Dialog MESTI ditulis seperti format ini: 🗣️ Dialog: "T
     );
   }
 
-  // === RENDER APLIKASI SEBENAR JIKA ADA AKSES ===
+  // === RENDER SKRIN MASUKKAN API KEY (BYOK) JIKA BELUM ADA ===
+  if (hasAccess && !isApiSetup) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 selection:bg-emerald-900 selection:text-emerald-50" style={bgStyles}>
+        <div className="max-w-2xl w-full bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-3xl p-6 md:p-10 shadow-2xl animate-in zoom-in-95 duration-500">
+          <div className="flex items-center space-x-4 mb-8 border-b border-slate-800 pb-6">
+            <div className="bg-cyan-500/20 p-3 rounded-2xl border border-cyan-500/30">
+              <KeyRound className="w-8 h-8 text-cyan-400" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold text-white">Sistem Kunci API Tersendiri (BYOK)</h2>
+              <p className="text-slate-400 text-sm mt-1">Sila masukkan kunci API Google Gemini anda untuk menghidupkan enjin AI.</p>
+            </div>
+          </div>
+
+          <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800 mb-8">
+            <h3 className="text-emerald-400 font-bold flex items-center mb-4">
+              <BookOpen className="w-5 h-5 mr-2" /> Tutorial Pantas: Cara Dapatkan Kunci API
+            </h3>
+            <ol className="list-decimal list-inside text-slate-300 space-y-3 text-sm leading-relaxed">
+              <li>Pergi ke laman web rasmi <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline font-semibold">Google AI Studio</a> dan log masuk guna akaun Google/Gmail anda.</li>
+              <li>Sila setuju (Tick) pada terma dan syarat jika diminta.</li>
+              <li>Klik pada butang biru besar <strong>"Get API key"</strong> atau <strong>"Create API key"</strong> di menu sebelah kiri.</li>
+              <li>Pilih <strong>"Create API key in new project"</strong>. Tunggu sebentar sehingga kod panjang dijana.</li>
+              <li>Salin (Copy) kod rahsia tersebut dan tampal (Paste) di dalam kotak di bawah.</li>
+              <li className="text-amber-400/90 mt-2"><em>*Nota: Jika anda ingin jana gambar berkualiti Pixar (Image-to-Image), pastikan akaun Google Cloud anda telah disetkan "Billing" (akaun berbayar Pay-as-you-go).</em></li>
+            </ol>
+          </div>
+
+          <div className="space-y-4">
+            <label className="text-sm font-bold text-slate-300 block uppercase tracking-wider">Kunci API Google (API Key)</label>
+            <input 
+              type="password" 
+              value={userApiKey}
+              onChange={(e) => setUserApiKey(e.target.value)}
+              placeholder="AIzaSyA..."
+              className="w-full bg-slate-950/80 border border-slate-700 rounded-xl px-4 py-4 text-white focus:outline-none focus:border-cyan-500 font-mono"
+            />
+            <button 
+              onClick={() => {
+                if(userApiKey.trim().length > 20) {
+                  localStorage.setItem('geminiUserApiKey', userApiKey.trim());
+                  setIsApiSetup(true);
+                } else {
+                  alert("Sila masukkan kunci API yang sah (biasanya bermula dengan 'AIza...').");
+                }
+              }}
+              className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold py-4 rounded-xl shadow-lg transition-all flex items-center justify-center"
+            >
+              Simpan Kunci & Mula Menggunakan Apps <ArrowRight className="w-5 h-5 ml-2" />
+            </button>
+            <p className="text-center text-xs text-slate-500 mt-4">
+              Kunci API anda disimpan dengan selamat di dalam pelayar (browser) peranti anda sahaja dan tidak dikongsi dengan sesiapa.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // === RENDER APLIKASI SEBENAR JIKA ADA AKSES & API KEY ===
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans pb-24 selection:bg-emerald-900 selection:text-emerald-50 animate-in fade-in duration-1000">
       
@@ -569,6 +638,17 @@ SYARAT WAJIB BAHASA: Dialog MESTI ditulis seperti format ini: 🗣️ Dialog: "T
               </h1>
             </div>
           </div>
+          {/* UBAH DI SINI: Butang reset API Key */}
+          <button 
+            onClick={() => {
+              localStorage.removeItem('geminiUserApiKey');
+              setUserApiKey("");
+              setIsApiSetup(false);
+            }}
+            className="text-xs text-slate-400 hover:text-red-400 flex items-center px-3 py-1.5 rounded-lg border border-transparent hover:border-red-500/30 hover:bg-red-500/10 transition-all"
+          >
+            <KeyRound className="w-3.5 h-3.5 mr-1.5" /> Tukar API Key
+          </button>
         </div>
       </header>
 
@@ -692,7 +772,6 @@ SYARAT WAJIB BAHASA: Dialog MESTI ditulis seperti format ini: 🗣️ Dialog: "T
           </div>
         )}
 
-        {}
         {storyboard.length > 0 && !isAnalyzing && (
           <div className="space-y-8 pt-4">
             {isUpdatingCharacter && (
