@@ -11,9 +11,7 @@ export default async function handler(req, res) {
   const { action, payload } = req.body;
 
   try {
-    // ==========================================
-    // 1. OTAK TEKS: GUNA GOOGLE GEMINI (Bijak Karang Cerita)
-    // ==========================================
+    // 1. OTAK TEKS: Guna Gemini 2.5 Flash untuk analisis & cerita
     if (action === 'analyze') {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
       const response = await fetch(url, {
@@ -25,42 +23,62 @@ export default async function handler(req, res) {
       return res.status(200).json(await response.json());
     } 
     
-    // ==========================================
-    // 2. TUKANG LUKIS: GUNA ENJIN AI TERBUKA PERCUMA
-    // (Bypass sekatan Google, Tiada Limit Kuota Imej!)
-    // ==========================================
+    // 2. TUKANG LUKIS: Guna model Google TERKINI (Gemini 3.1 Flash Image)
     else if (action === 'imagen') {
-      const prompt = payload.instances.prompt;
-      // Panggil AI Pelukis Percuma (gaya Pixar)
-      const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt + ", 3D Pixar style, highly detailed, beautiful lighting")}?width=1024&height=1024&nologo=true`;
+      const promptText = payload.instances.prompt;
       
-      const imgRes = await fetch(imageUrl);
-      if (!imgRes.ok) throw new Error("Gagal menjana gambar dari AI Pelukis");
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent?key=${apiKey}`;
       
-      // Tukar gambar jadi format yang difahami oleh frontend Vercel kita
-      const arrayBuffer = await imgRes.arrayBuffer();
-      const base64Data = Buffer.from(arrayBuffer).toString('base64');
+      // Format payload untuk model gemini-3.1-flash-image
+      const newPayload = {
+        contents: [
+          {
+            parts: [
+              { text: promptText }
+            ]
+          }
+        ]
+      };
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newPayload)
+      });
       
-      // Hantar balik ke apps Abang ND
+      if (!response.ok) throw new Error(await response.text());
+      const data = await response.json();
+      
+      // Cari data imej (base64) dari response
+      let base64Data = null;
+      for (const candidate of data.candidates || []) {
+         for (const part of candidate.content.parts || []) {
+            if (part.inlineData) {
+               base64Data = part.inlineData.data;
+               break;
+            }
+         }
+         if (base64Data) break;
+      }
+      
+      if (!base64Data) throw new Error("Tiada imej dikembalikan dari Google.");
+      
+      // Format balik supaya frontend kita faham
       return res.status(200).json({ predictions: [{ bytesBase64Encoded: base64Data }] });
     }
     
-    // ==========================================
-    // 3. EDIT GAMBAR (Bypass Google juga)
-    // ==========================================
+    // 3. EDIT GAMBAR (Image-to-Image)
     else if (action === 'edit') {
-      const promptText = payload.contents[0].parts[0].text;
-      const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(promptText + ", 3D Pixar style, highly detailed")}?width=1024&height=1024&nologo=true`;
-      
-      const imgRes = await fetch(imageUrl);
-      if (!imgRes.ok) throw new Error("Gagal mengedit gambar");
-      
-      const arrayBuffer = await imgRes.arrayBuffer();
-      const base64Data = Buffer.from(arrayBuffer).toString('base64');
-      
-      return res.status(200).json({
-        candidates: [{ content: { parts: [{ inlineData: { data: base64Data } }] } }]
+       // Kita guna model yang sama untuk edit gambar (perlu lulus payload dari frontend)
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent?key=${apiKey}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
       });
+      
+      if (!response.ok) throw new Error(await response.text());
+      return res.status(200).json(await response.json());
     }
     
     else {
